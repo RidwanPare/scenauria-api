@@ -118,3 +118,106 @@ describe('updateProfile', () => {
     });
   });
 });
+
+import { listMembers, changeMemberRole, removeMember } from '../services/organization.service';
+
+describe('listMembers', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('retourne la liste des membres avec infos user', async () => {
+    const fakeMembers = [
+      {
+        id: 'member-uuid',
+        user_id: 'user-uuid',
+        email: 'alice@example.com',
+        first_name: 'Alice',
+        last_name: 'Dupont',
+        avatar_url: null,
+        role: 'owner',
+        joined_at: new Date(),
+      },
+    ];
+    mockQuery.mockResolvedValueOnce({ rows: fakeMembers });
+
+    const result = await listMembers('org-uuid');
+    expect(result.members).toHaveLength(1);
+    expect(result.members[0].email).toBe('alice@example.com');
+    expect(result.members[0].role).toBe('owner');
+  });
+});
+
+describe('changeMemberRole', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('met à jour le rôle d un membre non-owner', async () => {
+    const fakeMember = { id: 'member-uuid', user_id: 'target-uuid', role: 'editor' };
+    mockQuery.mockResolvedValueOnce({ rows: [fakeMember] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ owner_id: 'owner-uuid' }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 'target-uuid', role: 'admin' }] });
+
+    const result = await changeMemberRole('org-uuid', 'target-uuid', 'admin');
+    expect(result.role).toBe('admin');
+  });
+
+  it('lève 400 INVALID_ROLE si rôle invalide', async () => {
+    await expect(changeMemberRole('org-uuid', 'target-uuid', 'owner')).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'INVALID_ROLE',
+    });
+  });
+
+  it('lève 404 MEMBER_NOT_FOUND si userId non membre', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await expect(changeMemberRole('org-uuid', 'unknown-uuid', 'admin')).rejects.toMatchObject({
+      statusCode: 404,
+      code: 'MEMBER_NOT_FOUND',
+    });
+  });
+
+  it('lève 403 CANNOT_CHANGE_OWNER_ROLE si target est l owner', async () => {
+    const fakeMember = { id: 'member-uuid', user_id: 'owner-uuid', role: 'owner' };
+    mockQuery.mockResolvedValueOnce({ rows: [fakeMember] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ owner_id: 'owner-uuid' }] });
+
+    await expect(changeMemberRole('org-uuid', 'owner-uuid', 'admin')).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'CANNOT_CHANGE_OWNER_ROLE',
+    });
+  });
+});
+
+describe('removeMember', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('supprime un membre non-owner', async () => {
+    const fakeMember = { id: 'member-uuid', user_id: 'target-uuid', role: 'editor' };
+    mockQuery.mockResolvedValueOnce({ rows: [fakeMember] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ owner_id: 'owner-uuid' }] });
+    mockQuery.mockResolvedValueOnce({});
+
+    await expect(removeMember('org-uuid', 'target-uuid')).resolves.toBeUndefined();
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM organization_members'),
+      expect.any(Array)
+    );
+  });
+
+  it('lève 404 MEMBER_NOT_FOUND si userId non membre', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await expect(removeMember('org-uuid', 'unknown-uuid')).rejects.toMatchObject({
+      statusCode: 404,
+      code: 'MEMBER_NOT_FOUND',
+    });
+  });
+
+  it('lève 403 CANNOT_REMOVE_OWNER si target est l owner', async () => {
+    const fakeMember = { id: 'member-uuid', user_id: 'owner-uuid', role: 'owner' };
+    mockQuery.mockResolvedValueOnce({ rows: [fakeMember] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ owner_id: 'owner-uuid' }] });
+
+    await expect(removeMember('org-uuid', 'owner-uuid')).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'CANNOT_REMOVE_OWNER',
+    });
+  });
+});

@@ -66,3 +66,82 @@ export async function updateProfile(orgId: string, data: UpdateProfileData): Pro
   if (!result.rows[0]) throw makeAppError('Organization not found', 404, 'ORG_NOT_FOUND');
   return result.rows[0];
 }
+
+export interface MemberEntry {
+  id: string;
+  user_id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  avatar_url: string | null;
+  role: string;
+  joined_at: string;
+}
+
+const MEMBER_ROLES = ['admin', 'editor', 'viewer'];
+
+async function getMemberAndOwner(
+  orgId: string,
+  targetUserId: string
+): Promise<{ member: { id: string; user_id: string; role: string }; ownerId: string }> {
+  const memberResult = await pool.query(
+    `SELECT id, user_id, role FROM organization_members
+     WHERE organization_id = $1 AND user_id = $2`,
+    [orgId, targetUserId]
+  );
+  if (!memberResult.rows[0]) throw makeAppError('Member not found', 404, 'MEMBER_NOT_FOUND');
+
+  const orgResult = await pool.query(
+    `SELECT owner_id FROM organizations WHERE id = $1`,
+    [orgId]
+  );
+  return { member: memberResult.rows[0], ownerId: orgResult.rows[0].owner_id };
+}
+
+export async function listMembers(orgId: string): Promise<{ members: MemberEntry[] }> {
+  const result = await pool.query(
+    `SELECT om.id, om.user_id, u.email, u.first_name, u.last_name, u.avatar_url,
+            om.role, om.created_at AS joined_at
+     FROM organization_members om
+     JOIN users u ON u.id = om.user_id
+     WHERE om.organization_id = $1
+     ORDER BY om.created_at ASC`,
+    [orgId]
+  );
+  return { members: result.rows };
+}
+
+export async function changeMemberRole(
+  orgId: string,
+  targetUserId: string,
+  newRole: string
+): Promise<{ user_id: string; role: string }> {
+  if (!MEMBER_ROLES.includes(newRole)) {
+    throw makeAppError(`Role must be one of: ${MEMBER_ROLES.join(', ')}`, 400, 'INVALID_ROLE');
+  }
+
+  const { member, ownerId } = await getMemberAndOwner(orgId, targetUserId);
+  if (member.user_id === ownerId) {
+    throw makeAppError('Cannot change owner role', 403, 'CANNOT_CHANGE_OWNER_ROLE');
+  }
+
+  const updateResult = await pool.query(
+    `UPDATE organization_members SET role = $1
+     WHERE organization_id = $2 AND user_id = $3
+     RETURNING user_id, role`,
+    [newRole, orgId, targetUserId]
+  );
+  return updateResult.rows[0];
+}
+
+export async function removeMember(orgId: string, targetUserId: string): Promise<void> {
+  const { member, ownerId } = await getMemberAndOwner(orgId, targetUserId);
+  if (member.user_id === ownerId) {
+    throw makeAppError('Cannot remove the organization owner', 403, 'CANNOT_REMOVE_OWNER');
+  }
+
+  await pool.query(
+    `DELETE FROM organization_members WHERE organization_id = $1 AND user_id = $2`,
+    [orgId, targetUserId]
+  );
+}
