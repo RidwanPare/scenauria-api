@@ -128,3 +128,95 @@ export async function getVisitsByPlace(orgId: string, placeId: string): Promise<
   );
   return { visits: result.rows };
 }
+
+export async function createVisit(orgId: string, data: CreateVisitData): Promise<Visit> {
+  const placeCheck = await pool.query(
+    `SELECT id FROM places WHERE id = $1 AND organization_id = $2`,
+    [data.place_id, orgId]
+  );
+  if (!placeCheck.rows[0]) throw makeAppError('Place not found', 404, 'PLACE_NOT_FOUND');
+
+  const slug = data.slug ?? `${data.place_id.substring(0, 8)}-${Date.now().toString(36)}`;
+
+  const slugCheck = await pool.query(`SELECT id FROM visits WHERE slug = $1`, [slug]);
+  if (slugCheck.rows[0]) throw makeAppError('Slug already taken', 400, 'SLUG_TAKEN');
+
+  const result = await pool.query(
+    `INSERT INTO visits (place_id, capture_id, scene_url, poster_url, thumbnail_url, slug, viewer_settings, required_plan)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING id, place_id, capture_id, scene_url, poster_url, thumbnail_url,
+       slug, publication_status, viewer_settings, published_at, paused_at,
+       required_plan, created_at, updated_at`,
+    [
+      data.place_id,
+      data.capture_id ?? null,
+      data.scene_url ?? null,
+      data.poster_url ?? null,
+      data.thumbnail_url ?? null,
+      slug,
+      JSON.stringify(data.viewer_settings ?? {}),
+      data.required_plan ?? 'start',
+    ]
+  );
+  return result.rows[0];
+}
+
+export async function updateVisit(orgId: string, visitId: string, data: UpdateVisitData): Promise<Visit> {
+  const UPDATABLE = ['capture_id', 'scene_url', 'poster_url', 'thumbnail_url', 'slug', 'viewer_settings', 'required_plan'] as const;
+  const fields: string[] = [];
+  const params: unknown[] = [];
+
+  for (const key of UPDATABLE) {
+    if (key in data) {
+      params.push(data[key] ?? null);
+      fields.push(`${key} = $${params.length}`);
+    }
+  }
+
+  if (fields.length === 0) {
+    return getVisit(orgId, visitId);
+  }
+
+  params.push(visitId);
+  params.push(orgId);
+
+  const result = await pool.query(
+    `UPDATE visits v SET ${fields.join(', ')}, updated_at = NOW()
+     FROM places p
+     WHERE v.id = $${params.length - 1} AND v.place_id = p.id AND p.organization_id = $${params.length}
+     RETURNING ${VISIT_COLS}`,
+    params
+  );
+  if (!result.rows[0]) throw makeAppError('Visit not found', 404, 'VISIT_NOT_FOUND');
+  return result.rows[0];
+}
+
+export async function deleteVisit(orgId: string, visitId: string): Promise<void> {
+  const result = await pool.query(
+    `DELETE FROM visits v USING places p
+     WHERE v.id = $1 AND v.place_id = p.id AND p.organization_id = $2`,
+    [visitId, orgId]
+  );
+  if ((result as any).rowCount === 0) throw makeAppError('Visit not found', 404, 'VISIT_NOT_FOUND');
+}
+
+export async function setPublicationStatus(orgId: string, visitId: string, action: 'publish' | 'pause' | 'unpublish'): Promise<Visit> {
+  let setClause: string;
+  if (action === 'publish') {
+    setClause = `publication_status = 'published', published_at = NOW()`;
+  } else if (action === 'pause') {
+    setClause = `publication_status = 'paused', paused_at = NOW()`;
+  } else {
+    setClause = `publication_status = 'draft', published_at = NULL, paused_at = NULL`;
+  }
+
+  const result = await pool.query(
+    `UPDATE visits v SET ${setClause}, updated_at = NOW()
+     FROM places p
+     WHERE v.id = $1 AND v.place_id = p.id AND p.organization_id = $2
+     RETURNING ${VISIT_COLS}`,
+    [visitId, orgId]
+  );
+  if (!result.rows[0]) throw makeAppError('Visit not found', 404, 'VISIT_NOT_FOUND');
+  return result.rows[0];
+}
