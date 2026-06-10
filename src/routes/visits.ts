@@ -10,6 +10,8 @@ import {
   setPublicationStatus,
 } from '../services/visit.service';
 import { getQrCodesByVisit } from '../services/qrcode.service';
+import { getHotspotsByVisit } from '../services/hotspot.service';
+import { getCtaButtonsByVisit } from '../services/cta.service';
 import { AppError } from '../middleware/errorHandler';
 
 const router = Router();
@@ -45,6 +47,16 @@ router.post('/', authenticate, authorize('owner', 'admin', 'editor'), async (req
 // Sub-resource and action routes BEFORE /:id to avoid Express conflicts
 router.get('/:visitId/qrcodes', authenticate, async (req: Request, res: Response) => {
   const result = await getQrCodesByVisit(req.user!.orgId, String(req.params.visitId));
+  res.json(result);
+});
+
+router.get('/:visitId/hotspots', authenticate, async (req: Request, res: Response) => {
+  const result = await getHotspotsByVisit(req.user!.orgId, String(req.params.visitId));
+  res.json(result);
+});
+
+router.get('/:visitId/cta', authenticate, async (req: Request, res: Response) => {
+  const result = await getCtaButtonsByVisit(req.user!.orgId, String(req.params.visitId));
   res.json(result);
 });
 

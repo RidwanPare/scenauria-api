@@ -12,6 +12,8 @@ import placesRouter from './routes/places';
 import capturesRouter from './routes/captures';
 import visitsRouter, { publicVisitRouter } from './routes/visits';
 import qrcodesRouter from './routes/qrcodes';
+import hotspotsRouter from './routes/hotspots';
+import ctaRouter from './routes/cta';
 
 dotenv.config();
 
@@ -37,6 +39,8 @@ app.use('/places', placesRouter);
 app.use('/captures', capturesRouter);
 app.use('/visits', visitsRouter);
 app.use('/qrcodes', qrcodesRouter);
+app.use('/hotspots', hotspotsRouter);
+app.use('/cta', ctaRouter);
 app.use('/v', publicVisitRouter);
 
 app.use(errorHandler);
