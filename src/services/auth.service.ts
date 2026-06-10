@@ -5,6 +5,8 @@ import {
   signAccessToken,
   generateRawRefreshToken,
   hashToken,
+  generateResetToken,
+  verifyResetToken,
 } from './token.service';
 
 const BCRYPT_COST = 12;
@@ -109,4 +111,97 @@ export async function login(
   const accessToken = signAccessToken(user.id, membership.organization_id, membership.role);
   const { password_hash: _, ...safeUser } = user;
   return { accessToken, refreshToken: rawRefreshToken, user: safeUser };
+}
+
+export async function refreshTokens(
+  rawRefreshToken: string
+): Promise<{ accessToken: string; refreshToken: string }> {
+  const tokenHash = hashToken(rawRefreshToken);
+
+  const result = await pool.query(
+    `SELECT id, user_id, revoked_at, expires_at
+     FROM refresh_tokens WHERE token_hash = $1`,
+    [tokenHash]
+  );
+  const tokenRecord = result.rows[0];
+
+  if (
+    !tokenRecord ||
+    tokenRecord.revoked_at ||
+    new Date(tokenRecord.expires_at) < new Date()
+  ) {
+    throw makeAppError('Invalid refresh token', 401, 'INVALID_REFRESH_TOKEN');
+  }
+
+  // Rotate: revoke the old token
+  await pool.query(
+    `UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1`,
+    [tokenRecord.id]
+  );
+
+  const memberResult = await pool.query(
+    `SELECT organization_id, role FROM organization_members
+     WHERE user_id = $1 ORDER BY created_at ASC LIMIT 1`,
+    [tokenRecord.user_id]
+  );
+  const membership = memberResult.rows[0] ?? { organization_id: null, role: 'viewer' };
+
+  const newRawRefreshToken = generateRawRefreshToken();
+  await storeRefreshToken(tokenRecord.user_id, newRawRefreshToken);
+
+  const newAccessToken = signAccessToken(
+    tokenRecord.user_id,
+    membership.organization_id,
+    membership.role
+  );
+  return { accessToken: newAccessToken, refreshToken: newRawRefreshToken };
+}
+
+export async function logout(rawRefreshToken: string): Promise<void> {
+  const tokenHash = hashToken(rawRefreshToken);
+  await pool.query(
+    `UPDATE refresh_tokens SET revoked_at = NOW()
+     WHERE token_hash = $1 AND revoked_at IS NULL`,
+    [tokenHash]
+  );
+}
+
+export async function forgotPassword(email: string): Promise<void> {
+  const result = await pool.query(
+    `SELECT id FROM users WHERE email = $1 AND status = 'active'`,
+    [email]
+  );
+  // Don't reveal if email exists
+  if (!result.rows[0]) return;
+
+  const user = result.rows[0];
+  const resetToken = generateResetToken(user.id);
+
+  const { Resend } = await import('resend');
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const resetUrl = `${process.env.CORS_ORIGIN ?? 'http://localhost:3000'}/auth/reset-password?token=${resetToken}`;
+
+  await resend.emails.send({
+    from: process.env.EMAIL_FROM ?? 'noreply@scenauria.com',
+    to: email,
+    subject: 'Réinitialisation de votre mot de passe Scenauria',
+    html: `<p>Cliquez sur ce lien pour réinitialiser votre mot de passe (valable 1h) :</p>
+           <a href="${resetUrl}">${resetUrl}</a>`,
+  });
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<void> {
+  const { userId } = verifyResetToken(token);
+  const passwordHash = await bcrypt.hash(newPassword, BCRYPT_COST);
+
+  await pool.query(
+    `UPDATE users SET password_hash = $1 WHERE id = $2`,
+    [passwordHash, userId]
+  );
+  // Revoke all refresh tokens for security
+  await pool.query(
+    `UPDATE refresh_tokens SET revoked_at = NOW()
+     WHERE user_id = $1 AND revoked_at IS NULL`,
+    [userId]
+  );
 }
