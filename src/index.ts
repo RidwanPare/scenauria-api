@@ -17,6 +17,7 @@ import ctaRouter from './routes/cta';
 import surveysRouter from './routes/surveys';
 import analyticsRouter from './routes/analytics';
 import billingRouter from './routes/billing';
+import adminRouter from './routes/admin';
 
 dotenv.config();
 
@@ -48,6 +49,7 @@ app.use('/surveys', surveysRouter);
 app.use('/analytics', analyticsRouter);
 app.use('/billing', billingRouter);
 app.use('/v', publicVisitRouter);
+app.use('/admin', adminRouter);
 
 app.use(errorHandler);
 
