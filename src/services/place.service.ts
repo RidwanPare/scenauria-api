@@ -102,6 +102,87 @@ export async function getPlace(orgId: string, placeId: string): Promise<Place> {
   return result.rows[0];
 }
 
+export type UpdatePlaceData = Partial<CreatePlaceData>;
+
+export async function updatePlace(
+  orgId: string,
+  placeId: string,
+  data: UpdatePlaceData
+): Promise<Place> {
+  if ('name' in data && (!data.name || data.name.trim() === '')) {
+    throw makeAppError('Name is required', 400, 'NAME_REQUIRED');
+  }
+
+  const updatable: (keyof UpdatePlaceData)[] = [
+    'name', 'category', 'address', 'city', 'country', 'description',
+    'logo_url', 'cover_url', 'phone', 'whatsapp', 'website_url', 'booking_url',
+  ];
+
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  let paramIndex = 1;
+
+  for (const key of updatable) {
+    if (key in data) {
+      fields.push(`${key} = $${paramIndex++}`);
+      values.push(key === 'name' ? (data[key] as string).trim() : data[key]);
+    }
+  }
+
+  if (fields.length === 0) return getPlace(orgId, placeId);
+
+  fields.push(`updated_at = NOW()`);
+  values.push(placeId, orgId);
+
+  const result = await pool.query(
+    `UPDATE places SET ${fields.join(', ')}
+     WHERE id = $${paramIndex++} AND organization_id = $${paramIndex}
+     RETURNING ${PLACE_COLUMNS}`,
+    values
+  );
+
+  if (!result.rows[0]) throw makeAppError('Place not found', 404, 'PLACE_NOT_FOUND');
+  return result.rows[0];
+}
+
+export async function deletePlace(orgId: string, placeId: string): Promise<void> {
+  const countResult = await pool.query(
+    `SELECT COUNT(*)::int AS count
+     FROM visits v
+     JOIN places p ON p.id = v.place_id
+     WHERE p.id = $1 AND p.organization_id = $2 AND v.publication_status = 'published'`,
+    [placeId, orgId]
+  );
+
+  if (countResult.rows[0].count > 0) {
+    throw makeAppError(
+      'Cannot delete a place with published visits',
+      409,
+      'PLACE_HAS_ACTIVE_VISITS'
+    );
+  }
+
+  await pool.query(
+    `DELETE FROM places WHERE id = $1 AND organization_id = $2`,
+    [placeId, orgId]
+  );
+}
+
+export async function setPlaceStatus(
+  orgId: string,
+  placeId: string,
+  status: 'active' | 'archived'
+): Promise<Place> {
+  const result = await pool.query(
+    `UPDATE places SET status = $1, updated_at = NOW()
+     WHERE id = $2 AND organization_id = $3
+     RETURNING ${PLACE_COLUMNS}`,
+    [status, placeId, orgId]
+  );
+  if (!result.rows[0]) throw makeAppError('Place not found', 404, 'PLACE_NOT_FOUND');
+  return result.rows[0];
+}
+
 export async function createPlace(orgId: string, data: CreatePlaceData): Promise<Place> {
   if (!data.name || data.name.trim() === '') {
     throw makeAppError('Name is required', 400, 'NAME_REQUIRED');
