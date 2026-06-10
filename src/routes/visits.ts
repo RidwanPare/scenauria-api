@@ -12,6 +12,7 @@ import {
 import { getQrCodesByVisit } from '../services/qrcode.service';
 import { getHotspotsByVisit } from '../services/hotspot.service';
 import { getCtaButtonsByVisit } from '../services/cta.service';
+import { getSurveyByVisit } from '../services/survey.service';
 import { AppError } from '../middleware/errorHandler';
 
 const router = Router();
@@ -57,6 +58,11 @@ router.get('/:visitId/hotspots', authenticate, async (req: Request, res: Respons
 
 router.get('/:visitId/cta', authenticate, async (req: Request, res: Response) => {
   const result = await getCtaButtonsByVisit(req.user!.orgId, String(req.params.visitId));
+  res.json(result);
+});
+
+router.get('/:visitId/survey', authenticate, async (req: Request, res: Response) => {
+  const result = await getSurveyByVisit(req.user!.orgId, String(req.params.visitId));
   res.json(result);
 });
 
