@@ -9,6 +9,7 @@ import {
   setPlaceStatus,
 } from '../services/place.service';
 import { getCapturesByPlace } from '../services/capture.service';
+import { getVisitsByPlace } from '../services/visit.service';
 
 const router = Router();
 
@@ -28,6 +29,11 @@ router.post('/', authenticate, authorize('owner', 'admin', 'editor'), async (req
 
 router.get('/:placeId/captures', authenticate, async (req: Request, res: Response) => {
   const result = await getCapturesByPlace(req.user!.orgId, String(req.params.placeId));
+  res.json(result);
+});
+
+router.get('/:placeId/visits', authenticate, async (req: Request, res: Response) => {
+  const result = await getVisitsByPlace(req.user!.orgId, String(req.params.placeId));
   res.json(result);
 });
 

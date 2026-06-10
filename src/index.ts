@@ -10,6 +10,7 @@ import organizationsRouter from './routes/organizations';
 import invitationsRouter from './routes/invitations';
 import placesRouter from './routes/places';
 import capturesRouter from './routes/captures';
+import visitsRouter, { publicVisitRouter } from './routes/visits';
 
 dotenv.config();
 
@@ -33,6 +34,8 @@ app.use('/organizations', organizationsRouter);
 app.use('/invitations', invitationsRouter);
 app.use('/places', placesRouter);
 app.use('/captures', capturesRouter);
+app.use('/visits', visitsRouter);
+app.use('/v', publicVisitRouter);
 
 app.use(errorHandler);
 
