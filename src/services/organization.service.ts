@@ -63,5 +63,6 @@ export async function updateProfile(orgId: string, data: UpdateProfileData): Pro
                owner_id, created_at, updated_at`,
     values
   );
+  if (!result.rows[0]) throw makeAppError('Organization not found', 404, 'ORG_NOT_FOUND');
   return result.rows[0];
 }

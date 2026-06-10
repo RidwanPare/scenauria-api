@@ -109,4 +109,12 @@ describe('updateProfile', () => {
       expect.any(Array)
     );
   });
+
+  it('lève 404 ORG_NOT_FOUND si l org n existe pas lors de l update', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE retourne 0 lignes
+    await expect(updateProfile('nonexistent-uuid', { name: 'X' })).rejects.toMatchObject({
+      statusCode: 404,
+      code: 'ORG_NOT_FOUND',
+    });
+  });
 });
