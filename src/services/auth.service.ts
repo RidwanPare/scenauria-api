@@ -194,14 +194,20 @@ export async function resetPassword(token: string, newPassword: string): Promise
   const { userId } = verifyResetToken(token);
   const passwordHash = await bcrypt.hash(newPassword, BCRYPT_COST);
 
-  await pool.query(
-    `UPDATE users SET password_hash = $1 WHERE id = $2`,
-    [passwordHash, userId]
-  );
-  // Revoke all refresh tokens for security
-  await pool.query(
-    `UPDATE refresh_tokens SET revoked_at = NOW()
-     WHERE user_id = $1 AND revoked_at IS NULL`,
-    [userId]
-  );
+  await pool.query('BEGIN');
+  try {
+    await pool.query(
+      `UPDATE users SET password_hash = $1 WHERE id = $2`,
+      [passwordHash, userId]
+    );
+    await pool.query(
+      `UPDATE refresh_tokens SET revoked_at = NOW()
+       WHERE user_id = $1 AND revoked_at IS NULL`,
+      [userId]
+    );
+    await pool.query('COMMIT');
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    throw err;
+  }
 }

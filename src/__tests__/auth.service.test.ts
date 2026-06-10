@@ -6,6 +6,12 @@ jest.mock('../db/client', () => ({
   __esModule: true,
 }));
 
+jest.mock('resend', () => ({
+  Resend: jest.fn().mockImplementation(() => ({
+    emails: { send: jest.fn().mockResolvedValue({ id: 'ok' }) },
+  })),
+}));
+
 import pool from '../db/client';
 import { register, login, refreshTokens, logout, forgotPassword, resetPassword } from '../services/auth.service';
 
@@ -197,14 +203,37 @@ describe('auth.service — resetPassword', () => {
     const token = generateResetToken('user-uuid');
 
     mockQuery
+      .mockResolvedValueOnce({})  // BEGIN
       .mockResolvedValueOnce({})  // UPDATE users password_hash
-      .mockResolvedValueOnce({}); // UPDATE refresh_tokens revoke all
+      .mockResolvedValueOnce({})  // UPDATE refresh_tokens
+      .mockResolvedValueOnce({}); // COMMIT
 
     await expect(resetPassword(token, 'newpassword123')).resolves.toBeUndefined();
-    expect(mockQuery).toHaveBeenCalledTimes(2);
+    expect(mockQuery).toHaveBeenCalledWith('BEGIN');
+    expect(mockQuery).toHaveBeenCalledWith('COMMIT');
+    expect(mockQuery).toHaveBeenCalledTimes(4);
   });
 
   it('lève une erreur si token invalide', async () => {
     await expect(resetPassword('invalid.token', 'newpass')).rejects.toThrow();
+  });
+});
+
+describe('auth.service — forgotPassword', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('envoie un email si utilisateur trouvé', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 'user-uuid' }] }); // SELECT user
+
+    await expect(forgotPassword('test@example.com')).resolves.toBeUndefined();
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it('retourne silencieusement si email inconnu', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // no user found
+
+    await expect(forgotPassword('unknown@example.com')).resolves.toBeUndefined();
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    // Should NOT have tried to send email - no more queries
   });
 });
