@@ -15,6 +15,7 @@ import qrcodesRouter from './routes/qrcodes';
 import hotspotsRouter from './routes/hotspots';
 import ctaRouter from './routes/cta';
 import surveysRouter from './routes/surveys';
+import analyticsRouter from './routes/analytics';
 
 dotenv.config();
 
@@ -43,6 +44,7 @@ app.use('/qrcodes', qrcodesRouter);
 app.use('/hotspots', hotspotsRouter);
 app.use('/cta', ctaRouter);
 app.use('/surveys', surveysRouter);
+app.use('/analytics', analyticsRouter);
 app.use('/v', publicVisitRouter);
 
 app.use(errorHandler);
