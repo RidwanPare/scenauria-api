@@ -145,3 +145,69 @@ export async function removeMember(orgId: string, targetUserId: string): Promise
     [orgId, targetUserId]
   );
 }
+
+export interface PlanInfo {
+  plan: string;
+  subscription_status: string;
+  billing_interval: string | null;
+  current_period_end: string | null;
+  usage: {
+    places_count: number;
+    published_visits_count: number;
+    active_captures_count: number;
+    members_count: number;
+  };
+}
+
+export async function getPlanInfo(orgId: string): Promise<PlanInfo> {
+  const orgResult = await pool.query(
+    `SELECT plan, subscription_status FROM organizations WHERE id = $1`,
+    [orgId]
+  );
+  if (!orgResult.rows[0]) throw makeAppError('Organization not found', 404, 'ORG_NOT_FOUND');
+  const { plan, subscription_status } = orgResult.rows[0];
+
+  const [subResult, placesResult, visitsResult, capturesResult, membersResult] = await Promise.all([
+    pool.query(
+      `SELECT billing_interval, current_period_end
+       FROM subscriptions WHERE organization_id = $1
+       ORDER BY created_at DESC LIMIT 1`,
+      [orgId]
+    ),
+    pool.query(
+      `SELECT COUNT(*)::int AS count FROM places WHERE organization_id = $1`,
+      [orgId]
+    ),
+    pool.query(
+      `SELECT COUNT(*)::int AS count FROM visits v
+       JOIN places p ON p.id = v.place_id
+       WHERE p.organization_id = $1 AND v.publication_status = 'published'`,
+      [orgId]
+    ),
+    pool.query(
+      `SELECT COUNT(*)::int AS count FROM captures c
+       JOIN places p ON p.id = c.place_id
+       WHERE p.organization_id = $1 AND c.status NOT IN ('failed', 'draft')`,
+      [orgId]
+    ),
+    pool.query(
+      `SELECT COUNT(*)::int AS count FROM organization_members WHERE organization_id = $1`,
+      [orgId]
+    ),
+  ]);
+
+  const sub = subResult.rows[0];
+
+  return {
+    plan,
+    subscription_status,
+    billing_interval: sub?.billing_interval ?? null,
+    current_period_end: sub?.current_period_end ?? null,
+    usage: {
+      places_count: placesResult.rows[0].count,
+      published_visits_count: visitsResult.rows[0].count,
+      active_captures_count: capturesResult.rows[0].count,
+      members_count: membersResult.rows[0].count,
+    },
+  };
+}

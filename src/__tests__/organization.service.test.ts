@@ -221,3 +221,61 @@ describe('removeMember', () => {
     });
   });
 });
+
+import { getPlanInfo } from '../services/organization.service';
+
+describe('getPlanInfo', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('retourne plan + subscription + usage en parallèle', async () => {
+    const fakeOrg = { plan: 'start', subscription_status: 'inactive' };
+    const fakeSub = { billing_interval: null, current_period_end: null };
+    const fakePlaces = { count: 3 };
+    const fakeVisits = { count: 1 };
+    const fakeCaptures = { count: 2 };
+    const fakeMembers = { count: 4 };
+
+    mockQuery
+      .mockResolvedValueOnce({ rows: [fakeOrg] })
+      .mockResolvedValueOnce({ rows: [fakeSub] })
+      .mockResolvedValueOnce({ rows: [fakePlaces] })
+      .mockResolvedValueOnce({ rows: [fakeVisits] })
+      .mockResolvedValueOnce({ rows: [fakeCaptures] })
+      .mockResolvedValueOnce({ rows: [fakeMembers] });
+
+    const result = await getPlanInfo('org-uuid');
+
+    expect(result.plan).toBe('start');
+    expect(result.subscription_status).toBe('inactive');
+    expect(result.billing_interval).toBeNull();
+    expect(result.current_period_end).toBeNull();
+    expect(result.usage.places_count).toBe(3);
+    expect(result.usage.published_visits_count).toBe(1);
+    expect(result.usage.active_captures_count).toBe(2);
+    expect(result.usage.members_count).toBe(4);
+  });
+
+  it('lève 404 ORG_NOT_FOUND si organisation inconnue', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await expect(getPlanInfo('unknown')).rejects.toMatchObject({
+      statusCode: 404,
+      code: 'ORG_NOT_FOUND',
+    });
+  });
+
+  it('retourne billing_interval null si pas de subscription', async () => {
+    const fakeOrg = { plan: 'start', subscription_status: 'inactive' };
+    mockQuery
+      .mockResolvedValueOnce({ rows: [fakeOrg] })
+      .mockResolvedValueOnce({ rows: [] })   // pas de subscription
+      .mockResolvedValueOnce({ rows: [{ count: 0 }] })
+      .mockResolvedValueOnce({ rows: [{ count: 0 }] })
+      .mockResolvedValueOnce({ rows: [{ count: 0 }] })
+      .mockResolvedValueOnce({ rows: [{ count: 1 }] });
+
+    const result = await getPlanInfo('org-uuid');
+    expect(result.billing_interval).toBeNull();
+    expect(result.current_period_end).toBeNull();
+    expect(result.usage.members_count).toBe(1);
+  });
+});
