@@ -4,7 +4,7 @@ const config = {
   testEnvironment: 'node',
   roots: ['<rootDir>/src'],
   testMatch: ['**/__tests__/**/*.test.ts'],
-  globalSetup: '<rootDir>/src/__tests__/setup.ts',
+  setupFiles: ['<rootDir>/src/__tests__/setup.ts'],
   clearMocks: true,
 };
 
