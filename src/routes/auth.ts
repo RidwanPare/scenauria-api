@@ -17,6 +17,10 @@ import { AppError } from '../middleware/errorHandler';
 
 const router = Router();
 
+// Simple in-memory state store (replace with Redis for multi-process production)
+const oauthStateStore = new Map<string, number>(); // state → expiry timestamp
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
 function validateEmail(email: unknown): email is string {
   return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
@@ -89,13 +93,26 @@ router.post('/reset-password', async (req: Request, res: Response, next: NextFun
 // GET /auth/google
 router.get('/google', (req: Request, res: Response) => {
   const state = crypto.randomUUID();
+  oauthStateStore.set(state, Date.now() + OAUTH_STATE_TTL_MS);
   const url = getAuthorizationUrl(state);
   res.redirect(url);
 });
 
 // GET /auth/google/callback
 router.get('/google/callback', async (req: Request, res: Response, next: NextFunction) => {
-  const { code } = req.query;
+  const { code, state } = req.query;
+
+  // Verify state to prevent CSRF
+  if (!state || typeof state !== 'string') {
+    return next(badRequest('Missing state parameter', 'MISSING_STATE'));
+  }
+  const stateExpiry = oauthStateStore.get(state);
+  if (!stateExpiry || stateExpiry < Date.now()) {
+    oauthStateStore.delete(state);
+    return next(badRequest('Invalid or expired OAuth state', 'INVALID_STATE'));
+  }
+  oauthStateStore.delete(state); // consume once
+
   if (!code || typeof code !== 'string') {
     return next(badRequest('Missing code', 'MISSING_CODE'));
   }

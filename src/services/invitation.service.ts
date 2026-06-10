@@ -3,15 +3,9 @@ import pool from '../db/client';
 import { hashToken } from './token.service';
 import { AppError } from '../middleware/errorHandler';
 import { Resend } from 'resend';
+import { makeAppError } from './auth.service';
 
 const INVITATION_EXPIRES_DAYS = 7;
-
-function makeAppError(message: string, statusCode: number, code: string): AppError {
-  const err = new Error(message) as AppError;
-  err.statusCode = statusCode;
-  err.code = code;
-  return err;
-}
 
 export async function inviteByEmail(
   organizationId: string,

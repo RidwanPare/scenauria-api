@@ -1,10 +1,22 @@
 import bcrypt from 'bcryptjs';
 
 // Mock pool BEFORE importing auth.service
-jest.mock('../db/client', () => ({
-  default: { query: jest.fn() },
-  __esModule: true,
-}));
+jest.mock('../db/client', () => {
+  const clientQueryMock = jest.fn();
+  const releaseMock = jest.fn();
+  return {
+    default: {
+      query: jest.fn(),
+      connect: jest.fn().mockResolvedValue({
+        query: clientQueryMock,
+        release: releaseMock,
+      }),
+    },
+    __esModule: true,
+    __mockClientQuery: clientQueryMock,
+    __mockRelease: releaseMock,
+  };
+});
 
 jest.mock('resend', () => ({
   Resend: jest.fn().mockImplementation(() => ({
@@ -16,6 +28,9 @@ import pool from '../db/client';
 import { register, login, refreshTokens, logout, forgotPassword, resetPassword } from '../services/auth.service';
 
 const mockQuery = pool.query as jest.Mock;
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const poolModule = require('../db/client');
+const mockClientQuery = poolModule.__mockClientQuery as jest.Mock;
 
 describe('auth.service — register', () => {
   beforeEach(() => jest.clearAllMocks());
@@ -31,7 +46,7 @@ describe('auth.service — register', () => {
     const fakeOrg = { id: 'org-uuid' };
 
     // BEGIN, INSERT users, INSERT organizations, INSERT organization_members, INSERT refresh_tokens, COMMIT
-    mockQuery
+    mockClientQuery
       .mockResolvedValueOnce({})                     // BEGIN
       .mockResolvedValueOnce({ rows: [fakeUser] })   // INSERT users
       .mockResolvedValueOnce({ rows: [fakeOrg] })    // INSERT organizations
@@ -44,12 +59,12 @@ describe('auth.service — register', () => {
     expect(result.user.email).toBe('test@example.com');
     expect(typeof result.accessToken).toBe('string');
     expect(typeof result.refreshToken).toBe('string');
-    expect(mockQuery).toHaveBeenCalledWith('BEGIN');
-    expect(mockQuery).toHaveBeenCalledWith('COMMIT');
+    expect(mockClientQuery).toHaveBeenCalledWith('BEGIN');
+    expect(mockClientQuery).toHaveBeenCalledWith('COMMIT');
   });
 
   it('rollback et relève 409 EMAIL_TAKEN si email déjà pris', async () => {
-    mockQuery
+    mockClientQuery
       .mockResolvedValueOnce({})  // BEGIN
       .mockRejectedValueOnce(Object.assign(new Error('duplicate'), { code: '23505' }))  // INSERT users fails
       .mockResolvedValueOnce({});  // ROLLBACK
@@ -62,7 +77,7 @@ describe('auth.service — register', () => {
 
   it('rollback et relève l erreur si erreur inconnue en DB', async () => {
     const dbError = new Error('connection lost');
-    mockQuery
+    mockClientQuery
       .mockResolvedValueOnce({})   // BEGIN
       .mockRejectedValueOnce(dbError)  // INSERT users fails
       .mockResolvedValueOnce({});  // ROLLBACK
@@ -202,16 +217,16 @@ describe('auth.service — resetPassword', () => {
     const { generateResetToken } = require('../services/token.service');
     const token = generateResetToken('user-uuid');
 
-    mockQuery
+    mockClientQuery
       .mockResolvedValueOnce({})  // BEGIN
       .mockResolvedValueOnce({})  // UPDATE users password_hash
       .mockResolvedValueOnce({})  // UPDATE refresh_tokens
       .mockResolvedValueOnce({}); // COMMIT
 
     await expect(resetPassword(token, 'newpassword123')).resolves.toBeUndefined();
-    expect(mockQuery).toHaveBeenCalledWith('BEGIN');
-    expect(mockQuery).toHaveBeenCalledWith('COMMIT');
-    expect(mockQuery).toHaveBeenCalledTimes(4);
+    expect(mockClientQuery).toHaveBeenCalledWith('BEGIN');
+    expect(mockClientQuery).toHaveBeenCalledWith('COMMIT');
+    expect(mockClientQuery).toHaveBeenCalledTimes(4);
   });
 
   it('lève une erreur si token invalide', async () => {

@@ -36,9 +36,11 @@ export async function register(
 ): Promise<{ accessToken: string; refreshToken: string; user: Record<string, unknown> }> {
   const passwordHash = await bcrypt.hash(password, BCRYPT_COST);
 
-  await pool.query('BEGIN');
+  const client = await pool.connect();
   try {
-    const userResult = await pool.query(
+    await client.query('BEGIN');
+
+    const userResult = await client.query(
       `INSERT INTO users (email, password_hash)
        VALUES ($1, $2)
        RETURNING id, email, first_name, last_name, locale`,
@@ -46,7 +48,7 @@ export async function register(
     );
     const user = userResult.rows[0];
 
-    const orgResult = await pool.query(
+    const orgResult = await client.query(
       `INSERT INTO organizations (owner_id, name)
        VALUES ($1, $2)
        RETURNING id`,
@@ -54,21 +56,27 @@ export async function register(
     );
     const org = orgResult.rows[0];
 
-    await pool.query(
+    await client.query(
       `INSERT INTO organization_members (organization_id, user_id, role)
        VALUES ($1, $2, 'owner')`,
       [org.id, user.id]
     );
 
     const rawRefreshToken = generateRawRefreshToken();
-    await storeRefreshToken(user.id, rawRefreshToken);
+    const tokenHash = hashToken(rawRefreshToken);
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + REFRESH_TOKEN_EXPIRES_DAYS);
+    await client.query(
+      `INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
+      [user.id, tokenHash, expiresAt]
+    );
 
-    await pool.query('COMMIT');
+    await client.query('COMMIT');
 
     const accessToken = signAccessToken(user.id, org.id, 'owner');
     return { accessToken, refreshToken: rawRefreshToken, user };
   } catch (err: unknown) {
-    await pool.query('ROLLBACK');
+    await client.query('ROLLBACK');
     if (
       typeof err === 'object' &&
       err !== null &&
@@ -78,6 +86,8 @@ export async function register(
       throw makeAppError('Email already in use', 409, 'EMAIL_TAKEN');
     }
     throw err;
+  } finally {
+    client.release();
   }
 }
 
@@ -194,20 +204,23 @@ export async function resetPassword(token: string, newPassword: string): Promise
   const { userId } = verifyResetToken(token);
   const passwordHash = await bcrypt.hash(newPassword, BCRYPT_COST);
 
-  await pool.query('BEGIN');
+  const client = await pool.connect();
   try {
-    await pool.query(
+    await client.query('BEGIN');
+    await client.query(
       `UPDATE users SET password_hash = $1 WHERE id = $2`,
       [passwordHash, userId]
     );
-    await pool.query(
+    await client.query(
       `UPDATE refresh_tokens SET revoked_at = NOW()
        WHERE user_id = $1 AND revoked_at IS NULL`,
       [userId]
     );
-    await pool.query('COMMIT');
+    await client.query('COMMIT');
   } catch (err) {
-    await pool.query('ROLLBACK');
+    await client.query('ROLLBACK');
     throw err;
+  } finally {
+    client.release();
   }
 }
