@@ -6,6 +6,8 @@ import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { errorHandler } from './middleware/errorHandler';
 import authRouter from './routes/auth';
+import organizationsRouter from './routes/organizations';
+import invitationsRouter from './routes/invitations';
 
 dotenv.config();
 
@@ -25,6 +27,8 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/auth', authRouter);
+app.use('/organizations', organizationsRouter);
+app.use('/invitations', invitationsRouter);
 
 app.use(errorHandler);
 
