@@ -8,6 +8,7 @@ import { errorHandler } from './middleware/errorHandler';
 import authRouter from './routes/auth';
 import organizationsRouter from './routes/organizations';
 import invitationsRouter from './routes/invitations';
+import placesRouter from './routes/places';
 
 dotenv.config();
 
@@ -29,6 +30,7 @@ app.get('/health', (req, res) => {
 app.use('/auth', authRouter);
 app.use('/organizations', organizationsRouter);
 app.use('/invitations', invitationsRouter);
+app.use('/places', placesRouter);
 
 app.use(errorHandler);
 
