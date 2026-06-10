@@ -8,6 +8,7 @@ import {
   deletePlace,
   setPlaceStatus,
 } from '../services/place.service';
+import { getCapturesByPlace } from '../services/capture.service';
 
 const router = Router();
 
@@ -23,6 +24,11 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
 router.post('/', authenticate, authorize('owner', 'admin', 'editor'), async (req: Request, res: Response) => {
   const place = await createPlace(req.user!.orgId, req.body);
   res.status(201).json(place);
+});
+
+router.get('/:placeId/captures', authenticate, async (req: Request, res: Response) => {
+  const result = await getCapturesByPlace(req.user!.orgId, String(req.params.placeId));
+  res.json(result);
 });
 
 router.get('/:id', authenticate, async (req: Request, res: Response) => {

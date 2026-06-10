@@ -9,6 +9,7 @@ import authRouter from './routes/auth';
 import organizationsRouter from './routes/organizations';
 import invitationsRouter from './routes/invitations';
 import placesRouter from './routes/places';
+import capturesRouter from './routes/captures';
 
 dotenv.config();
 
@@ -31,6 +32,7 @@ app.use('/auth', authRouter);
 app.use('/organizations', organizationsRouter);
 app.use('/invitations', invitationsRouter);
 app.use('/places', placesRouter);
+app.use('/captures', capturesRouter);
 
 app.use(errorHandler);
 
