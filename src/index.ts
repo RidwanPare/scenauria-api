@@ -16,6 +16,7 @@ import hotspotsRouter from './routes/hotspots';
 import ctaRouter from './routes/cta';
 import surveysRouter from './routes/surveys';
 import analyticsRouter from './routes/analytics';
+import billingRouter from './routes/billing';
 
 dotenv.config();
 
@@ -45,6 +46,7 @@ app.use('/hotspots', hotspotsRouter);
 app.use('/cta', ctaRouter);
 app.use('/surveys', surveysRouter);
 app.use('/analytics', analyticsRouter);
+app.use('/billing', billingRouter);
 app.use('/v', publicVisitRouter);
 
 app.use(errorHandler);
