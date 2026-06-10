@@ -11,6 +11,7 @@ import invitationsRouter from './routes/invitations';
 import placesRouter from './routes/places';
 import capturesRouter from './routes/captures';
 import visitsRouter, { publicVisitRouter } from './routes/visits';
+import qrcodesRouter from './routes/qrcodes';
 
 dotenv.config();
 
@@ -35,6 +36,7 @@ app.use('/invitations', invitationsRouter);
 app.use('/places', placesRouter);
 app.use('/captures', capturesRouter);
 app.use('/visits', visitsRouter);
+app.use('/qrcodes', qrcodesRouter);
 app.use('/v', publicVisitRouter);
 
 app.use(errorHandler);

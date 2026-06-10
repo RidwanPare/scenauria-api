@@ -9,6 +9,7 @@ import {
   deleteVisit,
   setPublicationStatus,
 } from '../services/visit.service';
+import { getQrCodesByVisit } from '../services/qrcode.service';
 import { AppError } from '../middleware/errorHandler';
 
 const router = Router();
@@ -39,6 +40,12 @@ router.post('/', authenticate, authorize('owner', 'admin', 'editor'), async (req
 
   const visit = await createVisit(req.user!.orgId, req.body);
   res.status(201).json(visit);
+});
+
+// Sub-resource and action routes BEFORE /:id to avoid Express conflicts
+router.get('/:visitId/qrcodes', authenticate, async (req: Request, res: Response) => {
+  const result = await getQrCodesByVisit(req.user!.orgId, String(req.params.visitId));
+  res.json(result);
 });
 
 // Action routes BEFORE /:id to avoid Express conflicts
