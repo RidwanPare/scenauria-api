@@ -114,3 +114,77 @@ export async function getCapture(orgId: string, captureId: string): Promise<Capt
   if (!result.rows[0]) throw makeAppError('Capture not found', 404, 'CAPTURE_NOT_FOUND');
   return result.rows[0];
 }
+
+export async function createCapture(
+  orgId: string,
+  placeId: string,
+  data: CreateCaptureData
+): Promise<Capture> {
+  const placeCheck = await pool.query(
+    `SELECT id FROM places WHERE id = $1 AND organization_id = $2`,
+    [placeId, orgId]
+  );
+  if (!placeCheck.rows[0]) throw makeAppError('Place not found', 404, 'PLACE_NOT_FOUND');
+
+  const result = await pool.query(
+    `INSERT INTO captures (place_id, video_url)
+     VALUES ($1, $2)
+     RETURNING id, place_id, video_url, duration_seconds, file_size_bytes, resolution,
+       status, quality_score, quality_report, error_message, uploaded_at,
+       processing_started_at, processing_completed_at, created_at, updated_at`,
+    [placeId, data.video_url ?? null]
+  );
+  return result.rows[0];
+}
+
+export async function updateCapture(
+  orgId: string,
+  captureId: string,
+  data: UpdateCaptureData
+): Promise<Capture> {
+  const updatable: (keyof UpdateCaptureData)[] = [
+    'video_url', 'duration_seconds', 'file_size_bytes', 'resolution', 'error_message', 'uploaded_at',
+  ];
+
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  let paramIndex = 1;
+
+  for (const key of updatable) {
+    if (key in data) {
+      fields.push(`${key} = $${paramIndex++}`);
+      values.push(data[key]);
+    }
+  }
+
+  if (fields.length === 0) return getCapture(orgId, captureId);
+
+  fields.push(`updated_at = NOW()`);
+  values.push(captureId, orgId);
+
+  const result = await pool.query(
+    `UPDATE captures c SET ${fields.join(', ')}
+     FROM places p
+     WHERE c.id = $${paramIndex++} AND c.place_id = p.id AND p.organization_id = $${paramIndex}
+     RETURNING c.id, c.place_id, c.video_url, c.duration_seconds, c.file_size_bytes,
+       c.resolution, c.status, c.quality_score, c.quality_report, c.error_message,
+       c.uploaded_at, c.processing_started_at, c.processing_completed_at, c.created_at, c.updated_at`,
+    values
+  );
+
+  if (!result.rows[0]) throw makeAppError('Capture not found', 404, 'CAPTURE_NOT_FOUND');
+  return result.rows[0];
+}
+
+export async function deleteCapture(orgId: string, captureId: string): Promise<void> {
+  const result = await pool.query(
+    `DELETE FROM captures c
+     USING places p
+     WHERE c.id = $1 AND c.place_id = p.id AND p.organization_id = $2`,
+    [captureId, orgId]
+  );
+
+  if ((result as any).rowCount === 0) {
+    throw makeAppError('Capture not found', 404, 'CAPTURE_NOT_FOUND');
+  }
+}
