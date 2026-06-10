@@ -35,7 +35,7 @@ export async function getProfile(orgId: string): Promise<OrgProfile> {
 }
 
 export async function updateProfile(orgId: string, data: UpdateProfileData): Promise<OrgProfile> {
-  if ('name' in data && (data.name === '' || data.name === null)) {
+  if ('name' in data && (!data.name || (data.name as string).trim() === '')) {
     throw makeAppError('Name cannot be empty', 400, 'NAME_REQUIRED');
   }
   if ('currency' in data && data.currency && !VALID_CURRENCIES.includes(data.currency)) {

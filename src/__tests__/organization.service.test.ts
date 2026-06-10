@@ -80,4 +80,33 @@ describe('updateProfile', () => {
       code: 'INVALID_CURRENCY',
     });
   });
+
+  it('retourne le profil sans UPDATE si aucun champ fourni', async () => {
+    const fakeOrg = {
+      id: 'org-uuid',
+      name: 'Acme',
+      business_type: null,
+      country: 'FR',
+      currency: 'EUR',
+      plan: 'start',
+      subscription_status: 'inactive',
+      owner_id: 'user-uuid',
+      created_at: new Date(),
+      updated_at: new Date(),
+    };
+    // getProfile is called internally when no fields to update
+    mockQuery.mockResolvedValueOnce({ rows: [fakeOrg] });
+
+    const result = await updateProfile('org-uuid', {});
+    expect(result.name).toBe('Acme');
+    // Verify no UPDATE was called, only SELECT from getProfile
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.stringContaining('SELECT'),
+      expect.any(Array)
+    );
+    expect(mockQuery).not.toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE'),
+      expect.any(Array)
+    );
+  });
 });
