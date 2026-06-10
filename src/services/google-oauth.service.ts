@@ -26,14 +26,16 @@ export async function handleGoogleCallback(
 ): Promise<{ accessToken: string; refreshToken: string; user: Record<string, unknown> }> {
   const client = getOAuth2Client();
   const { tokens } = await client.getToken(code);
-  client.setCredentials(tokens);
+
+  if (!tokens.id_token) throw new Error('Google did not return an ID token');
 
   const ticket = await client.verifyIdToken({
-    idToken: tokens.id_token!,
+    idToken: tokens.id_token,
     audience: process.env.GOOGLE_CLIENT_ID,
   });
   const googlePayload = ticket.getPayload();
   if (!googlePayload?.email) throw new Error('Google payload missing email');
+  if (!googlePayload.email_verified) throw new Error('Google email not verified');
 
   const { sub: googleId, email, picture: avatarUrl } = googlePayload;
 
@@ -60,9 +62,10 @@ export async function handleGoogleCallback(
       );
     } else {
       // Create new account with org
-      await pool.query('BEGIN');
+      const dbClient = await pool.connect();
       try {
-        const newUser = await pool.query(
+        await dbClient.query('BEGIN');
+        const newUser = await dbClient.query(
           `INSERT INTO users (email, google_id, avatar_url)
            VALUES ($1, $2, $3)
            RETURNING id, email, first_name, last_name, locale`,
@@ -70,18 +73,20 @@ export async function handleGoogleCallback(
         );
         user = newUser.rows[0];
 
-        const newOrg = await pool.query(
+        const newOrg = await dbClient.query(
           `INSERT INTO organizations (owner_id, name) VALUES ($1, $2) RETURNING id`,
           [user.id, 'Mon organisation']
         );
-        await pool.query(
+        await dbClient.query(
           `INSERT INTO organization_members (organization_id, user_id, role) VALUES ($1, $2, 'owner')`,
           [newOrg.rows[0].id, user.id]
         );
-        await pool.query('COMMIT');
+        await dbClient.query('COMMIT');
       } catch (err) {
-        await pool.query('ROLLBACK');
+        await dbClient.query('ROLLBACK');
         throw err;
+      } finally {
+        dbClient.release();
       }
     }
   }
