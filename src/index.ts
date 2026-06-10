@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { errorHandler } from './middleware/errorHandler';
+import authRouter from './routes/auth';
 
 dotenv.config();
 
@@ -22,6 +23,8 @@ app.use(express.json());
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+app.use('/auth', authRouter);
 
 app.use(errorHandler);
 
