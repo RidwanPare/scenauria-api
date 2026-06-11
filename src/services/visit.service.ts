@@ -161,6 +161,29 @@ export async function createVisit(orgId: string, data: CreateVisitData): Promise
   return result.rows[0];
 }
 
+/** Création de visite par le worker (pas de scoping org — protégé par workerAuth). Statut draft. */
+export async function createVisitFromWorker(data: {
+  place_id: string;
+  capture_id?: string | null;
+  scene_url?: string | null;
+  poster_url?: string | null;
+}): Promise<Visit> {
+  const placeCheck = await pool.query(`SELECT id FROM places WHERE id = $1`, [data.place_id]);
+  if (!placeCheck.rows[0]) throw makeAppError('Place not found', 404, 'PLACE_NOT_FOUND');
+
+  const slug = `${data.place_id.substring(0, 8)}-${Date.now().toString(36)}`;
+
+  const result = await pool.query(
+    `INSERT INTO visits (place_id, capture_id, scene_url, poster_url, slug, publication_status, viewer_settings)
+     VALUES ($1, $2, $3, $4, $5, 'draft', '{}')
+     RETURNING id, place_id, capture_id, scene_url, poster_url, thumbnail_url,
+       slug, publication_status, viewer_settings, published_at, paused_at,
+       required_plan, created_at, updated_at`,
+    [data.place_id, data.capture_id ?? null, data.scene_url ?? null, data.poster_url ?? null, slug]
+  );
+  return result.rows[0];
+}
+
 export async function updateVisit(orgId: string, visitId: string, data: UpdateVisitData): Promise<Visit> {
   const UPDATABLE = ['capture_id', 'scene_url', 'poster_url', 'thumbnail_url', 'slug', 'viewer_settings', 'required_plan'] as const;
   const fields: string[] = [];

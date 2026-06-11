@@ -5,10 +5,12 @@ import {
   getVisit,
   getVisitBySlug,
   createVisit,
+  createVisitFromWorker,
   updateVisit,
   deleteVisit,
   setPublicationStatus,
 } from '../services/visit.service';
+import { workerAuth } from '../middleware/workerAuth';
 import { getQrCodesByVisit } from '../services/qrcode.service';
 import { getHotspotsByVisit } from '../services/hotspot.service';
 import { getCtaButtonsByVisit } from '../services/cta.service';
@@ -35,14 +37,39 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
   res.json(result);
 });
 
-router.post('/', authenticate, authorize('owner', 'admin', 'editor'), async (req: Request, res: Response, next: NextFunction) => {
-  const { place_id } = req.body;
-  if (!place_id || typeof place_id !== 'string') {
-    return next(badRequest('place_id is required', 'PLACE_ID_REQUIRED'));
+router.post('/', (req: Request, res: Response, next: NextFunction) => {
+  // Le worker s'authentifie via X-Worker-Secret, les utilisateurs via JWT
+  if (req.headers['x-worker-secret']) {
+    return workerAuth(req, res, async (err?: unknown) => {
+      if (err) return next(err);
+      const { place_id } = req.body;
+      if (!place_id || typeof place_id !== 'string') {
+        return next(badRequest('place_id is required', 'PLACE_ID_REQUIRED'));
+      }
+      try {
+        const visit = await createVisitFromWorker(req.body);
+        res.status(201).json(visit);
+      } catch (e) {
+        next(e);
+      }
+    });
   }
-
-  const visit = await createVisit(req.user!.orgId, req.body);
-  res.status(201).json(visit);
+  return authenticate(req, res, (authErr?: unknown) => {
+    if (authErr) return next(authErr);
+    return authorize('owner', 'admin', 'editor')(req, res, async (roleErr?: unknown) => {
+      if (roleErr) return next(roleErr);
+      const { place_id } = req.body;
+      if (!place_id || typeof place_id !== 'string') {
+        return next(badRequest('place_id is required', 'PLACE_ID_REQUIRED'));
+      }
+      try {
+        const visit = await createVisit(req.user!.orgId, req.body);
+        res.status(201).json(visit);
+      } catch (e) {
+        next(e);
+      }
+    });
+  });
 });
 
 // Sub-resource and action routes BEFORE /:id to avoid Express conflicts

@@ -8,6 +8,9 @@ import {
   deleteCapture,
 } from '../services/capture.service';
 import { AppError } from '../middleware/errorHandler';
+import { workerAuth } from '../middleware/workerAuth';
+import { updateCaptureStatusFromWorker } from '../services/capture.service';
+import { enqueueProcessCapture } from '../services/queue.service';
 
 const router = Router();
 
@@ -35,7 +38,28 @@ router.post('/', authenticate, authorize('owner', 'admin', 'editor'), async (req
   }
 
   const capture = await createCapture(req.user!.orgId, place_id, { video_url });
+
+  // Lance le pipeline de traitement si une vidéo est fournie
+  if (video_url) {
+    try {
+      await enqueueProcessCapture(capture.id, place_id, video_url);
+    } catch (e) {
+      // Queue indisponible : la capture reste en "uploaded", relançable plus tard
+      console.error('enqueueProcessCapture failed:', e);
+    }
+  }
+
   res.status(201).json(capture);
+});
+
+// Callback worker (X-Worker-Secret) — avant /:id pour priorité de matching
+router.patch('/:id/status', workerAuth, async (req: Request, res: Response, next: NextFunction) => {
+  const { status } = req.body;
+  if (!status || typeof status !== 'string') {
+    return next(badRequest('status is required', 'STATUS_REQUIRED'));
+  }
+  const capture = await updateCaptureStatusFromWorker(String(req.params.id), req.body);
+  res.json(capture);
 });
 
 router.get('/:id', authenticate, async (req: Request, res: Response) => {

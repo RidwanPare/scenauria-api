@@ -18,6 +18,7 @@ import surveysRouter from './routes/surveys';
 import analyticsRouter from './routes/analytics';
 import billingRouter from './routes/billing';
 import adminRouter from './routes/admin';
+import uploadsRouter from './routes/uploads';
 
 dotenv.config();
 
@@ -50,6 +51,7 @@ app.use('/analytics', analyticsRouter);
 app.use('/billing', billingRouter);
 app.use('/v', publicVisitRouter);
 app.use('/admin', adminRouter);
+app.use('/uploads', uploadsRouter);
 
 app.use(errorHandler);
 

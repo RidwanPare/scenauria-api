@@ -176,6 +176,61 @@ export async function updateCapture(
   return result.rows[0];
 }
 
+export interface WorkerStatusPayload {
+  status: string;
+  error_message?: string | null;
+  quality_score?: number | null;
+  quality_report?: Record<string, unknown> | null;
+  duration_seconds?: number | null;
+  resolution?: string | null;
+}
+
+const TERMINAL_STATUSES = ['ready', 'processing_failed', 'quality_check_failed'];
+
+/** Mise à jour de statut par le worker (pas de scoping org — protégé par workerAuth). */
+export async function updateCaptureStatusFromWorker(
+  captureId: string,
+  payload: WorkerStatusPayload
+): Promise<Capture> {
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  let i = 1;
+
+  fields.push(`status = $${i++}`);
+  values.push(payload.status);
+
+  for (const key of ['error_message', 'quality_score', 'duration_seconds', 'resolution'] as const) {
+    if (key in payload) {
+      fields.push(`${key} = $${i++}`);
+      values.push(payload[key]);
+    }
+  }
+  if ('quality_report' in payload) {
+    fields.push(`quality_report = $${i++}`);
+    values.push(payload.quality_report == null ? null : JSON.stringify(payload.quality_report));
+  }
+
+  if (payload.status === 'processing') {
+    fields.push(`processing_started_at = NOW()`);
+  }
+  if (TERMINAL_STATUSES.includes(payload.status)) {
+    fields.push(`processing_completed_at = NOW()`);
+  }
+  fields.push(`updated_at = NOW()`);
+
+  values.push(captureId);
+
+  const result = await pool.query(
+    `UPDATE captures c SET ${fields.join(', ')}
+     WHERE c.id = $${i}
+     RETURNING ${CAPTURE_COLS}`,
+    values
+  );
+
+  if (!result.rows[0]) throw makeAppError('Capture not found', 404, 'CAPTURE_NOT_FOUND');
+  return result.rows[0];
+}
+
 export async function deleteCapture(orgId: string, captureId: string): Promise<void> {
   const result = await pool.query(
     `DELETE FROM captures c
